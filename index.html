@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Triple Yahtzee</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 8px; background: #f5f5f5; color: #222; }
+h1 { text-align: center; font-size: 1.4em; margin: 8px 0; }
+.dice-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0; }
+.dice-row label { font-size: 0.95em; font-weight: 500; }
+.dice-row input { width: 110px; height: 48px; font-size: 1.6em; text-align: center; border-radius: 8px; border: 2px solid #333; background: #fff; letter-spacing: 0.3em; }
+.controls { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.controls select, .controls button { padding: 8px 12px; font-size: 0.95em; border-radius: 6px; border: 2px solid #333; }
+.controls button { background: #2a7; color: #fff; border: none; font-weight: bold; cursor: pointer; }
+.controls button:active { background: #195; }
+.preview { text-align: center; margin: 6px 0; font-size: 0.95em; min-height: 1.4em; }
+.preview .valid { color: #2a7; font-weight: bold; }
+.preview .invalid { color: #c33; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+th, td { padding: 6px 8px; text-align: center; border: 1px solid #ccc; font-size: 0.88em; }
+th { background: #345; color: #fff; font-size: 0.82em; }
+td.cat { text-align: left; font-weight: 500; white-space: nowrap; }
+td.score { font-variant-numeric: tabular-nums; }
+td.filled { background: #e8f5e9; }
+tr.total-row td { background: #f0f0f0; font-weight: bold; }
+tr.bonus-row td { background: #fff8e1; }
+tr.grand-row td { background: #345; color: #fff; font-size: 1.05em; font-weight: bold; }
+.col-header { font-size: 0.78em; }
+.reset-btn { display: block; margin: 12px auto; padding: 8px 20px; background: #c33; color: #fff; border: none; border-radius: 6px; font-size: 0.95em; cursor: pointer; }
+.reset-btn:active { background: #a22; }
+</style>
+</head>
+<body>
+<h1>Triple Yahtzee</h1>
+
+<div class="dice-row">
+  <label for="dice">Roll:</label>
+  <input type="text" id="dice" inputmode="numeric" maxlength="5" placeholder="12131" autocomplete="off">
+</div>
+
+<div class="controls">
+  <select id="category"></select>
+  <select id="column">
+    <option value="0">Column 1 (×1)</option>
+    <option value="1">Column 2 (×2)</option>
+    <option value="2">Column 3 (×3)</option>
+  </select>
+  <button id="scoreBtn" onclick="scoreDice()">Score</button>
+</div>
+
+<div class="preview" id="preview"></div>
+
+<table>
+<thead>
+<tr>
+  <th style="width:38%">Category</th>
+  <th class="col-header">Col 1<br>×1</th>
+  <th class="col-header">Col 2<br>×2</th>
+  <th class="col-header">Col 3<br>×3</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+
+<button class="reset-btn" onclick="resetGame()">Reset Game</button>
+
+<script>
+const CATS = [
+  { id: 'aces',     label: "Aces (1s)",       upper: true,  face: 1 },
+  { id: 'twos',     label: "Twos (2s)",       upper: true,  face: 2 },
+  { id: 'threes',   label: "Threes (3s)",     upper: true,  face: 3 },
+  { id: 'fours',    label: "Fours (4s)",      upper: true,  face: 4 },
+  { id: 'fives',    label: "Fives (5s)",      upper: true,  face: 5 },
+  { id: 'sixes',    label: "Sixes (6s)",      upper: true,  face: 6 },
+  { id: 'three',    label: "Three of a Kind", upper: false },
+  { id: 'four',     label: "Four of a Kind",  upper: false },
+  { id: 'fullhouse',label: "Full House",      upper: false },
+  { id: 'small',    label: "Small Straight",  upper: false },
+  { id: 'large',    label: "Large Straight",  upper: false },
+  { id: 'yahtzee',  label: "Yahtzee",         upper: false },
+  { id: 'chance',   label: "Chance",          upper: false },
+];
+
+let scores = [[null,null,null,null,null,null,null,null,null,null,null,null,null],
+              [null,null,null,null,null,null,null,null,null,null,null,null,null],
+              [null,null,null,null,null,null,null,null,null,null,null,null,null]];
+
+function getDice() {
+  const val = document.getElementById('dice').value.trim();
+  if (val.length !== 5) return null;
+  const dice = val.split('').map(Number);
+  if (dice.some(d => d < 1 || d > 6)) return null;
+  return dice;
+}
+
+function calcScore(dice, catId) {
+  const counts = {};
+  dice.forEach(d => counts[d] = (counts[d]||0)+1);
+  const vals = Object.values(counts);
+  const sum = dice.reduce((a,b)=>a+b, 0);
+
+  for (const c of CATS) {
+    if (c.id === catId) {
+      if (c.upper) return (counts[c.face]||0) * c.face;
+      switch(catId) {
+        case 'three':     return vals.some(v=>v>=3) ? sum : 0;
+        case 'four':      return vals.some(v=>v>=4) ? sum : 0;
+        case 'fullhouse': return vals.includes(3)&&vals.includes(2) ? 25 : 0;
+        case 'small': {
+          const s = new Set(dice);
+          for (let i=1;i<=3;i++) if (s.has(i)&&s.has(i+1)&&s.has(i+2)&&s.has(i+3)) return 30;
+          return 0;
+        }
+        case 'large': {
+          const s = new Set(dice);
+          for (let i=1;i<=2;i++) if (s.has(i)&&s.has(i+1)&&s.has(i+2)&&s.has(i+3)&&s.has(i+4)) return 40;
+          return 0;
+        }
+        case 'yahtzee':   return vals.includes(5) ? 50 : 0;
+        case 'chance':    return sum;
+      }
+    }
+  }
+  return null;
+}
+
+function upperTotal(col) {
+  let t = 0;
+  for (let i=0;i<6;i++) t += scores[col][i] || 0;
+  return t;
+}
+function upperBonus(col) { return upperTotal(col) >= 63 ? 35 : 0; }
+function columnTotal(col) {
+  let t = 0;
+  for (let i=0;i<13;i++) t += scores[col][i] || 0;
+  return t + upperBonus(col);
+}
+function grandTotal() { return columnTotal(0) + 2*columnTotal(1) + 3*columnTotal(2); }
+
+function render() {
+  const tbody = document.getElementById('tbody');
+  let html = '';
+
+  CATS.forEach((cat, i) => {
+    if (i === 6) html += '<tr><td colspan="4" style="background:#dde;font-weight:bold;text-align:center;font-size:0.85em">Lower Section</td></tr>';
+    html += `<tr><td class="cat">${cat.label}</td>`;
+    for (let c=0;c<3;c++) {
+      const v = scores[c][i];
+      html += v !== null
+        ? `<td class="score filled">${v}</td>`
+        : `<td class="score" style="color:#999">–</td>`;
+    }
+    html += '</tr>';
+  });
+
+  html += `<tr class="total-row"><td class="cat">Upper Total</td>`;
+  for (let c=0;c<3;c++) html += `<td class="score">${upperTotal(c)}</td>`;
+  html += '</tr>';
+
+  html += `<tr class="bonus-row"><td class="cat">Bonus (35 if ≥63)</td>`;
+  for (let c=0;c<3;c++) html += `<td class="score">${upperBonus(c)}</td>`;
+  html += '</tr>';
+
+  html += `<tr class="total-row"><td class="cat">Upper Section Total</td>`;
+  for (let c=0;c<3;c++) html += `<td class="score">${upperTotal(c)+upperBonus(c)}</td>`;
+  html += '</tr>';
+
+  html += `<tr class="total-row"><td class="cat">Lower Total</td>`;
+  for (let c=0;c<3;c++) {
+    let t=0; for(let i=6;i<13;i++) t+=scores[c][i]||0;
+    html += `<td class="score">${t}</td>`;
+  }
+  html += '</tr>';
+
+  html += `<tr class="total-row"><td class="cat">Column Total</td>`;
+  for (let c=0;c<3;c++) html += `<td class="score">${columnTotal(c)}</td>`;
+  html += '</tr>';
+
+  const combined = columnTotal(0)+columnTotal(1)+columnTotal(2);
+  html += `<tr class="total-row"><td class="cat">Combined (1+2+3)</td><td class="score" colspan="3">${combined}</td></tr>`;
+
+  const dCombined = columnTotal(0)+2*columnTotal(1);
+  html += `<tr class="total-row"><td class="cat">Double Combined (1+2×2)</td><td class="score" colspan="3">${dCombined}</td></tr>`;
+
+  html += `<tr class="total-row"><td class="cat">Triple Combined (1+2×2+3×3)</td><td class="score" colspan="3">${grandTotal()}</td></tr>`;
+
+  html += `<tr class="grand-row"><td class="cat">GRAND TOTAL</td><td colspan="3">${grandTotal()}</td></tr>`;
+
+  tbody.innerHTML = html;
+}
+
+function updatePreview() {
+  const dice = getDice();
+  const catId = document.getElementById('category').value;
+  const col = parseInt(document.getElementById('column').value, 10);
+  const preview = document.getElementById('preview');
+
+  if (!dice || !catId) { preview.innerHTML = ''; return; }
+
+  const pts = calcScore(dice, catId);
+  const mult = [1,2,3][col];
+  const valid = pts > 0 || CATS.find(c=>c.id===catId).upper || catId==='chance';
+  preview.innerHTML = valid
+    ? `<span class="valid">${pts} pts → ${pts*mult} in Col ${col+1} (×${mult})</span>`
+    : `<span class="invalid">0 pts (doesn't qualify) → 0 in Col ${col+1}</span>`;
+}
+
+function scoreDice() {
+  const dice = getDice();
+  const catId = document.getElementById('category').value;
+  const col = parseInt(document.getElementById('column').value, 10);
+
+  if (!dice) { alert('Enter a valid 5-digit roll (each digit 1–6).'); return; }
+  if (!catId) { alert('Select a category.'); return; }
+  const idx = CATS.findIndex(c=>c.id===catId);
+  if (scores[col][idx] !== null) { alert('That category is already filled in this column!'); return; }
+
+  const pts = calcScore(dice, catId);
+  scores[col][idx] = pts;
+
+  document.getElementById('dice').value = '';
+  render();
+  updatePreview();
+}
+
+function resetGame() {
+  if (!confirm('Reset all scores?')) return;
+  scores = [[null,null,null,null,null,null,null,null,null,null,null,null,null],
+            [null,null,null,null,null,null,null,null,null,null,null,null,null],
+            [null,null,null,null,null,null,null,null,null,null,null,null,null]];
+  document.getElementById('dice').value = '';
+  render();
+  updatePreview();
+}
+
+// Init
+const catSelect = document.getElementById('category');
+CATS.forEach(c => {
+  const opt = document.createElement('option');
+  opt.value = c.id;
+  opt.textContent = c.label;
+  catSelect.appendChild(opt);
+});
+
+document.getElementById('dice').addEventListener('input', function() {
+  this.value = this.value.replace(/[^1-6]/g, '').slice(0, 5);
+  updatePreview();
+});
+catSelect.addEventListener('change', updatePreview);
+document.getElementById('column').addEventListener('change', updatePreview);
+
+render();
+</script>
+</body>
+</html>   
